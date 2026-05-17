@@ -14,6 +14,8 @@
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- html2pdf -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     :root {
       /* Base Theme (Light Mode Default) */
@@ -1488,7 +1490,8 @@
       input,
       select,
       textarea {
-        font-size: 16px; /* Prevents iOS zoom on focus */
+        font-size: 16px;
+        /* Prevents iOS zoom on focus */
         padding: 12px;
       }
 
@@ -1779,10 +1782,16 @@
             </div>
 
             <!-- Party Name -->
-            <div class="form-group span-2">
+            <div class="form-group">
               <label>Party Name <span class="req">*</span></label>
               <input type="text" id="fieldPartyName" list="partySuggestions" placeholder="Enter party name" required />
               <datalist id="partySuggestions"></datalist>
+            </div>
+
+            <!-- WhatsApp Number -->
+            <div class="form-group">
+              <label>WhatsApp No.</label>
+              <input type="tel" id="fieldWhatsApp" placeholder="e.g. 9876543210" pattern="[0-9]{10}" />
             </div>
 
             <!-- Product -->
@@ -1864,14 +1873,24 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" onclick="shouldShareAfterSave = true">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
+              </svg>
+              Save & Share
+            </button>
+            <button type="submit" class="btn btn-ghost" style="color: var(--aqua); border-color: var(--border);"
+              onclick="shouldShareAfterSave = false">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
                 <polyline points="17 21 17 13 7 13 7 21" />
                 <polyline points="7 3 7 8 15 8" />
               </svg>
-              Save Challan
+              Save Only
             </button>
             <button type="button" class="btn btn-ghost" onclick="resetForm()">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -2302,9 +2321,9 @@
     function initFirestore() {
       const statusBadge = document.getElementById('allCountBadge');
       if (statusBadge) statusBadge.textContent = '...';
-      
+
       showToast('Connecting to Firebase...', 'info');
-      
+
       // Real-time listener for the challans collection
       db.collection('challans').orderBy('id', 'desc').onSnapshot((snapshot) => {
         challans = [];
@@ -2317,12 +2336,13 @@
             salesPerson: c.salesPerson || 'N/A',
             srNo: c.srNo || 'N/A',
             partyName: c.partyName || 'N/A',
+            whatsapp: c.whatsapp || '',
             paymentStatus: c.paymentStatus || 'Paid',
             amtPaid: c.amtPaid !== undefined ? c.amtPaid : (c.total || 0),
             amtPending: c.amtPending !== undefined ? c.amtPending : 0
           });
         });
-        
+
         renderAll();
         updatePartySuggestions();
         showToast('Database Sync Active', 'success');
@@ -2460,7 +2480,7 @@
 
     function verifyAdmin() {
       const pw = document.getElementById('adminPassword').value;
-      if (pw === 'john1063') {
+      if (pw === 'John1063') {
         isAdmin = true;
         document.body.classList.add('admin-mode');
         document.getElementById('tab-admin').innerHTML = '<span class="tab-dot"></span>Logout';
@@ -2530,6 +2550,8 @@
     // PAYMENT SELECTION
     // ───────────────────────────────────────
     let selectedPayment = '';
+    let editModeId = null;
+    let shouldShareAfterSave = false;
 
     function selectPayment(method) {
       selectedPayment = method;
@@ -2545,10 +2567,16 @@
     function submitChallan(e) {
       e.preventDefault();
 
+      if (editModeId !== null) {
+        updateEntry(editModeId);
+        return;
+      }
+
       const salesPerson = document.getElementById('fieldSalesPerson').value;
       const srNo = document.getElementById('fieldSRNo').value;
       const date = document.getElementById('fieldDate').value;
       const partyName = document.getElementById('fieldPartyName').value;
+      const whatsapp = document.getElementById('fieldWhatsApp').value;
       const product = document.getElementById('fieldProduct').value;
       const qty = parseInt(document.getElementById('fieldQty').value);
       const rate = parseFloat(document.getElementById('fieldRate').value);
@@ -2580,6 +2608,7 @@
         date,
         salesPerson,
         partyName,
+        whatsapp,
         product,
         qty,
         rate,
@@ -2596,6 +2625,9 @@
         .then(() => {
           resetForm();
           showToast('Challan saved successfully!', 'success');
+          if (shouldShareAfterSave) {
+            sharePDF(entry);
+          }
         })
         .catch((error) => {
           console.error("Error adding document: ", error);
@@ -2615,6 +2647,27 @@
       document.getElementById('pill-cash').classList.remove('selected');
       document.getElementById('fieldTotal').value = '';
       togglePaymentFields();
+
+      editModeId = null;
+      const form = document.getElementById('challanForm');
+      const shareBtn = form.querySelector('.btn-primary');
+      const saveBtn = form.querySelector('.btn-ghost[type="submit"]');
+      if (shareBtn) shareBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+          <polyline points="16 6 12 2 8 6" />
+          <line x1="12" y1="2" x2="12" y2="15" />
+        </svg>
+        Save & Share
+      `;
+      if (saveBtn) saveBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+        Save Only
+      `;
     }
 
     // ───────────────────────────────────────
@@ -2712,11 +2765,13 @@
       ${showAdminActions ? `
         <td>
           <button class="btn-ghost" style="padding:4px 8px; font-size:0.6rem" onclick="editEntry(${c.id})">Edit</button>
+          <button class="btn-ghost" style="padding:4px 8px; font-size:0.6rem; color:var(--aqua); border-color:var(--border)" onclick="sharePDF(${c.id})">Share</button>
           <button class="del-btn" onclick="deleteEntry(${c.id})" title="Delete">&#10005;</button>
         </td>
       ` : `
         <td>
           <button class="btn-ghost" style="padding:4px 8px; font-size:0.6rem" onclick="editEntry(${c.id})">Edit</button>
+          <button class="btn-ghost" style="padding:4px 8px; font-size:0.6rem; color:var(--aqua); border-color:var(--border)" onclick="sharePDF(${c.id})">Share</button>
         </td>
       `}
     </tr>
@@ -2750,6 +2805,7 @@
       document.getElementById('fieldSalesPerson').value = c.salesPerson;
       document.getElementById('fieldDate').value = c.date;
       document.getElementById('fieldPartyName').value = c.partyName;
+      document.getElementById('fieldWhatsApp').value = c.whatsapp || '';
       document.getElementById('fieldProduct').value = c.product;
       document.getElementById('fieldQty').value = c.qty;
       document.getElementById('fieldRate').value = c.rate;
@@ -2769,18 +2825,28 @@
       calcTotal();
       document.getElementById('fieldSRNo').value = c.srNo; // Keep original SR No
 
-      // Change submit button to "Update"
-      const form = document.getElementById('challanForm');
-      const submitBtn = form.querySelector('button[type="submit"]');
-      const originalHtml = submitBtn.innerHTML;
+      editModeId = id;
 
-      submitBtn.innerHTML = 'Update Challan';
-      submitBtn.onclick = (e) => {
-        e.preventDefault();
-        updateEntry(id);
-        submitBtn.innerHTML = originalHtml;
-        submitBtn.onclick = null;
-      };
+      // Change submit buttons to "Update" actions
+      const shareBtn = form.querySelector('.btn-primary');
+      const saveBtn = form.querySelector('.btn-ghost[type="submit"]');
+
+      if (shareBtn) shareBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+          <polyline points="16 6 12 2 8 6" />
+          <line x1="12" y1="2" x2="12" y2="15" />
+        </svg>
+        Update & Share
+      `;
+      if (saveBtn) saveBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+        Update Only
+      `;
 
       switchView('challan');
       showToast('Edit mode active.', 'success');
@@ -2793,6 +2859,7 @@
       const salesPerson = document.getElementById('fieldSalesPerson').value;
       const date = document.getElementById('fieldDate').value;
       const partyName = document.getElementById('fieldPartyName').value;
+      const whatsapp = document.getElementById('fieldWhatsApp').value;
       const product = document.getElementById('fieldProduct').value;
       const qty = parseInt(document.getElementById('fieldQty').value);
       const rate = parseFloat(document.getElementById('fieldRate').value);
@@ -2816,6 +2883,7 @@
         date,
         salesPerson,
         partyName,
+        whatsapp,
         product,
         qty,
         rate,
@@ -2832,6 +2900,10 @@
         .then(() => {
           resetForm();
           showToast('Challan updated successfully.', 'success');
+          if (shouldShareAfterSave) {
+            const shareData = { ...entry, ...updatedData };
+            sharePDF(shareData);
+          }
         })
         .catch((error) => {
           console.error("Error updating document: ", error);
@@ -3137,6 +3209,195 @@
         toast.classList.add('fadeout');
         setTimeout(() => toast.remove(), 350);
       }, 3000);
+    }
+    // ───────────────────────────────────────
+    // SHARE PDF
+    // ───────────────────────────────────────
+    async function sharePDF(idOrObj) {
+      const c = typeof idOrObj === 'object' ? idOrObj : challans.find(x => x.id === idOrObj);
+      if (!c) return;
+
+      const challanHTML = `
+        <div id="pdf-content" style="padding: 40px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; background: #fff; width: 720px; box-sizing: border-box;">
+          <!-- Header Bar -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0891b2; padding-bottom: 20px; margin-bottom: 25px;">
+            <div>
+              <h1 style="margin: 0; color: #0891b2; font-size: 36px; font-weight: 800; letter-spacing: -0.5px;">Prata Aqua</h1>
+              <p style="margin: 4px 0 0; font-size: 13px; color: #64748b; font-family: monospace; letter-spacing: 2px; text-transform: uppercase;">Delivery Challan System</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="background: rgba(8, 145, 178, 0.1); color: #0891b2; font-size: 12px; font-weight: 700; padding: 6px 16px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Delivery Slip</span>
+              <p style="margin: 10px 0 0; font-size: 14px; color: #334155;"><strong>Date:</strong> ${fmtDate(c.date)}</p>
+            </div>
+          </div>
+          
+          <!-- Metadata Grid -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;">
+            <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+              <h3 style="margin: 0 0 10px; font-size: 13px; color: #0891b2; text-transform: uppercase; letter-spacing: 1px;">Challan Details</h3>
+              <p style="margin: 6px 0; font-size: 14px; color: #334155;"><strong style="color: #64748b; display: inline-block; width: 125px;">SR No:</strong> ${c.srNo}</p>
+              <p style="margin: 6px 0; font-size: 14px; color: #334155;"><strong style="color: #64748b; display: inline-block; width: 125px;">Sales Person:</strong> ${c.salesPerson}</p>
+              <p style="margin: 6px 0; font-size: 14px; color: #334155;"><strong style="color: #64748b; display: inline-block; width: 125px;">Payment Status:</strong> 
+                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; 
+                  ${c.paymentStatus === 'Paid' ? 'color: #16a34a;' :
+          c.paymentStatus === 'Pending' ? 'color: #dc2626;' :
+            'color: #d97706;'}">
+                  ${c.paymentStatus}
+                </span>
+              </p>
+              <p style="margin: 6px 0; font-size: 14px; color: #334155;"><strong style="color: #64748b; display: inline-block; width: 125px;">Payment Method:</strong> ${c.payment || 'N/A'}</p>
+            </div>
+            
+            <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+              <h3 style="margin: 0 0 10px; font-size: 13px; color: #0891b2; text-transform: uppercase; letter-spacing: 1px;">Customer Details</h3>
+              <p style="margin: 6px 0; font-size: 14px; color: #334155;"><strong style="color: #64748b; display: inline-block; width: 125px;">Party Name:</strong> ${c.partyName}</p>
+              ${c.whatsapp ? `<p style="margin: 6px 0; font-size: 14px; color: #334155;"><strong style="color: #64748b; display: inline-block; width: 125px;">WhatsApp No:</strong> ${c.whatsapp}</p>` : ''}
+            </div>
+          </div>
+
+          <!-- Product Details Table -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+            <thead>
+              <tr style="background: #0891b2; color: #ffffff;">
+                <th style="padding: 14px 18px; text-align: left; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Product Description</th>
+                <th style="padding: 14px 18px; text-align: right; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; width: 120px;">Qty (Cases)</th>
+                <th style="padding: 14px 18px; text-align: right; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; width: 120px;">Rate (Per Case)</th>
+                <th style="padding: 14px 18px; text-align: right; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; width: 140px;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background: #ffffff;">
+                <td style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b; font-weight: 500;">${c.product}</td>
+                <td style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0; text-align: right; font-size: 14px; color: #334155;">${c.qty}</td>
+                <td style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0; text-align: right; font-size: 14px; color: #334155;">Rs. ${c.rate.toFixed(2)}</td>
+                <td style="padding: 16px 18px; border-bottom: 1px solid #e2e8f0; text-align: right; font-size: 14px; color: #0891b2; font-weight: 600;">Rs. ${c.total.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Financial Details Box & Payment Summary -->
+          <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 30px; margin-bottom: 50px; align-items: start;">
+            <!-- Payment Info -->
+            <div style="border: 1px dashed #cbd5e1; padding: 18px; border-radius: 10px; background: #fafafa;">
+              <h4 style="margin: 0 0 12px; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Payment Details Summary</h4>
+              
+              <div style="display: flex; justify-content: space-between; margin: 6px 0; font-size: 14px;">
+                <span style="color: #64748b;">Payment Status:</span>
+                <span style="font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; font-size: 12px; 
+                  ${c.paymentStatus === 'Paid' ? 'background: rgba(22, 163, 74, 0.15); color: #16a34a;' :
+          c.paymentStatus === 'Pending' ? 'background: rgba(220, 38, 38, 0.15); color: #dc2626;' :
+            'background: rgba(217, 119, 6, 0.15); color: #d97706;'}">
+                  ${c.paymentStatus}
+                </span>
+              </div>
+              
+              <div style="display: flex; justify-content: space-between; margin: 6px 0; font-size: 14px;">
+                <span style="color: #64748b;">Payment Method:</span>
+                <span style="font-weight: 600; color: #334155;">${c.payment || 'N/A'}</span>
+              </div>
+            </div>
+
+            <!-- Financials Table -->
+            <div style="background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.01);">
+              <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 14px;">
+                <span style="color: #64748b;">Gross Total Amount:</span>
+                <span style="color: #334155; font-weight: 500;">Rs. ${c.total.toFixed(2)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 14px;">
+                <span style="color: #64748b;">Paid Amount:</span>
+                <span style="color: #16a34a; font-weight: 500;">Rs. ${c.amtPaid.toFixed(2)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin: 8px 0; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 15px; font-weight: 700;">
+                <span style="color: #1e293b;">Balance Pending:</span>
+                <span style="color: #dc2626;">Rs. ${c.amtPending.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer Text -->
+          <div style="margin-top: 60px; border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: center; font-size: 12px; color: #94a3b8; font-style: italic;">
+            <p style="margin: 0;">If you have any questions about this challan, please contact us (81604 85641).</p>
+            <p style="margin: 4px 0 0; font-weight: 500; color: #64748b;">Thank you for your business!</p>
+          </div>
+        </div>
+      `;
+
+      const container = document.createElement('div');
+      container.innerHTML = challanHTML;
+      container.style.position = 'fixed';
+      container.style.top = '0';
+      container.style.left = '0';
+      container.style.width = '720px';
+      container.style.zIndex = '-9999';
+      container.style.opacity = '0';
+      container.style.pointerEvents = 'none';
+      document.body.appendChild(container);
+
+      const opt = {
+        margin: 0, // Reset jsPDF margin to avoid extra padding issues
+        filename: `Challan_${c.srNo.replace(/\//g, '-')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          scrollY: 0,
+          scrollX: 0
+        },
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+
+      showToast('Generating PDF...', 'info');
+
+      try {
+        const pdfBlob = await html2pdf().set(opt).from(container.firstElementChild).outputPdf('blob');
+        document.body.removeChild(container);
+
+        const file = new File([pdfBlob], opt.filename, { type: 'application/pdf' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              title: 'Delivery Challan',
+              text: `Hello ${c.partyName},\nHere is the delivery challan for SR No: ${c.srNo}`,
+              files: [file]
+            });
+            showToast('PDF shared successfully!', 'success');
+          } catch (err) {
+            console.log('Native share failed/cancelled:', err);
+            fallbackDownloadAndWhatsApp(pdfBlob, opt.filename, c);
+          }
+        } else {
+          fallbackDownloadAndWhatsApp(pdfBlob, opt.filename, c);
+        }
+      } catch (err) {
+        console.error('PDF generation failed:', err);
+        showToast('Failed to generate PDF.', 'error');
+        if (document.body.contains(container)) document.body.removeChild(container);
+      }
+    }
+
+    function fallbackDownloadAndWhatsApp(pdfBlob, filename, c) {
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast('PDF downloaded. Opening WhatsApp...', 'success');
+
+      let waNumber = c.whatsapp ? c.whatsapp.replace(/\D/g, '') : '';
+      if (waNumber && waNumber.length === 10) waNumber = '91' + waNumber; // Default to India +91 if 10 digits
+
+      const msg = encodeURIComponent(`Hello ${c.partyName},\nHere are the details for your recent delivery:\n\n*SR No:* ${c.srNo}\n*Date:* ${fmtDate(c.date)}\n*Product:* ${c.product} (${c.qty} cases)\n*Total Amount:* Rs. ${c.total.toFixed(2)}\n*Balance Pending:* Rs. ${c.amtPending.toFixed(2)}\n\nPlease find the PDF invoice attached (downloaded to my device).`);
+
+      const waUrl = waNumber ? `https://wa.me/${waNumber}?text=${msg}` : `https://wa.me/?text=${msg}`;
+
+      setTimeout(() => {
+        window.open(waUrl, '_blank');
+      }, 1500);
     }
   </script>
 </body>
