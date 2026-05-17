@@ -1788,11 +1788,6 @@
               <datalist id="partySuggestions"></datalist>
             </div>
 
-            <!-- WhatsApp Number -->
-            <div class="form-group">
-              <label>WhatsApp No.</label>
-              <input type="tel" id="fieldWhatsApp" placeholder="e.g. 9876543210" pattern="[0-9]{10}" />
-            </div>
 
             <!-- Product -->
             <div class="form-group">
@@ -2576,7 +2571,6 @@
       const srNo = document.getElementById('fieldSRNo').value;
       const date = document.getElementById('fieldDate').value;
       const partyName = document.getElementById('fieldPartyName').value;
-      const whatsapp = document.getElementById('fieldWhatsApp').value;
       const product = document.getElementById('fieldProduct').value;
       const qty = parseInt(document.getElementById('fieldQty').value);
       const rate = parseFloat(document.getElementById('fieldRate').value);
@@ -2608,7 +2602,7 @@
         date,
         salesPerson,
         partyName,
-        whatsapp,
+        whatsapp: '',
         product,
         qty,
         rate,
@@ -2805,7 +2799,6 @@
       document.getElementById('fieldSalesPerson').value = c.salesPerson;
       document.getElementById('fieldDate').value = c.date;
       document.getElementById('fieldPartyName').value = c.partyName;
-      document.getElementById('fieldWhatsApp').value = c.whatsapp || '';
       document.getElementById('fieldProduct').value = c.product;
       document.getElementById('fieldQty').value = c.qty;
       document.getElementById('fieldRate').value = c.rate;
@@ -2859,7 +2852,6 @@
       const salesPerson = document.getElementById('fieldSalesPerson').value;
       const date = document.getElementById('fieldDate').value;
       const partyName = document.getElementById('fieldPartyName').value;
-      const whatsapp = document.getElementById('fieldWhatsApp').value;
       const product = document.getElementById('fieldProduct').value;
       const qty = parseInt(document.getElementById('fieldQty').value);
       const rate = parseFloat(document.getElementById('fieldRate').value);
@@ -2883,7 +2875,7 @@
         date,
         salesPerson,
         partyName,
-        whatsapp,
+        whatsapp: entry.whatsapp || '',
         product,
         qty,
         rate,
